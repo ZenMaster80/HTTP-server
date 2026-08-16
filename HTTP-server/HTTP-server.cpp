@@ -60,64 +60,71 @@ bool HttpServer::init()
 void HttpServer::start()
 {
     // 4. KUUNTELU (LISTEN)
-    if (listen(m_listenSocket, 5) == SOCKET_ERROR)
-    {
-        std::cerr << "Kuuntelu epäonnistui! Virhe: " << WSAGetLastError() << std::endl;
-        return;
+        if (listen(m_listenSocket, 5) == SOCKET_ERROR)
+        {
+            std::cerr << "Kuuntelu epäonnistui! Virhe: " << WSAGetLastError() << std::endl;
+            return;
+        }
+        std::cout << "Palvelin odottaa yhteytta portissa " << m_port << "...\n" << std::endl;
+        while (true)
+        {
+            // 5. HYVÄKSYNTÄ (ACCEPT) 
+            m_clientSocket = accept(m_listenSocket, nullptr, nullptr);
+            if (m_clientSocket == INVALID_SOCKET)
+            {
+                std::cerr << "Clientin luominen epäonnistui! Virhe: " << WSAGetLastError() << std::endl;
+                return;
+            }
+            std::cout << "Asiakas yhdistetty!\n" << std::endl;
+
+            // Kutsutaan apumetodeja hoitamaan datan lukeminen ja vastaaminen
+            handleRequest();
+            sendResponse();
+
+            // Suljetaan tämän yksittäisen asiakkaan yhteys pyynnön jälkeen
+            closesocket(m_clientSocket);
+            m_clientSocket = INVALID_SOCKET;
+            
+        }//suljetaan while silmukka ja palataan odottamaan seuraavaa asiakasta
     }
-    std::cout << "Palvelin odottaa yhteytta portissa " << m_port << "...\n" << std::endl;
 
-    // 5. HYVÄKSYNTÄ (ACCEPT) 
-    m_clientSocket = accept(m_listenSocket, nullptr, nullptr);
-    if (m_clientSocket == INVALID_SOCKET)
+    // METODI 3: DATAN LUKEMINEN
+    void HttpServer::handleRequest()
     {
-        std::cerr << "Clientin luominen epäonnistui! Virhe: " << WSAGetLastError() << std::endl;
-        return;
+        // 6. DATAN LUKEMINEN (RECV)
+        std::vector<char> buffer(1024, 0);
+        int bytesReceived = recv(m_clientSocket, buffer.data(), 1023, 0);
+
+        if (bytesReceived == SOCKET_ERROR)
+        {
+            std::cerr << "Datan lukeminen epäonnistui! Virhe: " << WSAGetLastError() << std::endl;
+        }
+        else
+        {
+            std::cout << "\n --- Saapunut HTTP-PYYNTÖ ---\n";
+            std::cout << buffer.data() << std::endl;
+            std::cout << "---------------------------------\n";
+        }
     }
-    std::cout << "Asiakas yhdistetty!\n" << std::endl;
 
-    // Kutsutaan apumetodeja hoitamaan datan lukeminen ja vastaaminen
-    handleRequest();
-    sendResponse();
-
-    // Suljetaan tämän yksittäisen asiakkaan yhteys pyynnön jälkeen
-    closesocket(m_clientSocket);
-    m_clientSocket = INVALID_SOCKET;
-}
-
-// METODI 3: DATAN LUKEMINEN
-void HttpServer::handleRequest()
-{
-    // 6. DATAN LUKEMINEN (RECV)
-    std::vector<char> buffer(1024, 0);
-    int bytesReceived = recv(m_clientSocket, buffer.data(), 1023, 0);
-
-    if (bytesReceived == SOCKET_ERROR)
+    // METODI 4: VASTAUKSEN LÄHETYS
+    void HttpServer::sendResponse()
     {
-        std::cerr << "Datan lukeminen epäonnistui! Virhe: " << WSAGetLastError() << std::endl;
-    }
-    else
-    {
-        std::cout << "\n --- Saapunut HTTP-PYYNTÖ ---\n";
-        std::cout << buffer.data() << std::endl;
-        std::cout << "---------------------------------\n";
-    }
-}
+        // 1. Määritetään pelkkä selaimeen tuleva sisältöteksti
+        std::string body = "Hei Maailma!";
 
-// METODI 4: VASTAUKSEN LÄHETYS
-void HttpServer::sendResponse()
-{
-    // 7. VASTAUKSEN LÄHETYS (SEND)
-    std::string response = "HTTP/1.1 200 OK\r\n"
-        "Content-Type: text/plain; charset=utf-8\r\n"
-        "Content-Length: 13\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "Hei Maailma!";
+        // 2. Rakennetaan HTTP-otsikot ja liitetään body-tekstin pituus automaattisesti mukaan
+        std::string response = "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n"
+            "Content-Length: " + std::to_string(body.length()) + "\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            + body;
 
-    send(m_clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
-    std::cout << "Vastaus lahetetty asiakkaalle.\n";
-}
+        // 3. Lähetetään koko paketti selaimeen
+        send(m_clientSocket, response.c_str(), static_cast<int>(response.length()), 0);
+        std::cout << "Vastaus lahetetty asiakkaalle.\n";
+    }
 
 // METODI 5: LOPULLINEN SIIVOUS
 void HttpServer::cleanup()
